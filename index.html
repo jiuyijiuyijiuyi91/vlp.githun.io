@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Luraph V21 Deobfuscator (devirt) - 浏览器本地版</title>
+<title>Luraph V22 Deobfuscator (devirt) - 浏览器本地版</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: 'SF Mono', Consolas, Menlo, monospace; margin: 0; background: #0d1117; color: #c9d1d9; }
@@ -25,7 +25,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Luraph V15 Deobfuscator（含反虚拟机 devirt）· 浏览器本地版</h1>
+  <h1>Luraph V22 Deobfuscator（含反虚拟机 devirt）· 浏览器本地版</h1>
   <div class="status">脚本只在你的浏览器内处理，不上传任何代码。首次运行需从 CDN 加载 Pyodide（约 10MB，之后走浏览器缓存）。</div>
   <div class="toolbar">
     <button id="btnFile">选择 .lua 文件</button>
@@ -84,7 +84,6 @@ async function loadLuauWeb() {
     .replace("if ('Suspending' in WebAssembly && 'promising' in WebAssembly) {", "if (false) {")
     .replace("await import('./lib/Luau.Web.JSPI.js')", 'await import(asyncifyBlob)')
     .replace("await import('./lib/Luau.Web.Asyncify.js')", 'await import(asyncifyBlob)');
-  const idxBlob = URL.createObjectURL(new Blob([idxSrc], { type: 'text/javascript' }));
   // 把 blob 变量注入模块作用域
   const wrapped = 'const jspiBlob = ' + JSON.stringify(jspiBlob) + '; const asyncifyBlob = ' + JSON.stringify(asyncifyBlob) + ';\n' + idxSrc;
   const finalBlob = URL.createObjectURL(new Blob([wrapped], { type: 'text/javascript' }));
@@ -249,6 +248,7 @@ $('fileInput').onchange = (e) => {
   r.readAsText(f);
 };
 $('btnRun').onclick = run;
+init().catch(e => { log('[!] 初始化失败: ' + (e && e.message ? e.message : e), 'err'); console.error(e); });
 $('btnSave').onclick = () => {
   const blob = new Blob([resultText], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
