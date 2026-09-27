@@ -25,7 +25,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Luraph V15 Deobfuscator（含反虚拟机 devirt）· 浏览器本地版</h1>
+  <h1>Luraph V16 Deobfuscator（含反虚拟机 devirt）· 浏览器本地版</h1>
   <div class="status">脚本只在你的浏览器内处理，代码不会上传。首次运行需从 CDN 加载 Pyodide（约 10MB，之后走浏览器缓存）；可在 URL 加 ?pyodide=本地路径 离线加载。</div>
   <div class="toolbar">
     <button id="btnFile">选择 .lua 文件</button>
@@ -197,7 +197,7 @@ async function run() {
     await init();
     log('[*] 写入样本…');
     pyodide.globals.set('__srcText', srcText);
-    await pyodide.runPythonAsync('open("/workspace/sample.lua", "w", encoding="latin-1").write(__srcText)');
+    await pyodide.runPythonAsync('open("/workspace/sample.lua", "w", encoding="latin-1").write(__srcText.encode("utf-8").decode("latin-1"))');
     pyodide.globals.delete('__srcText');
 
     const pycode = `
@@ -257,6 +257,7 @@ for p in ['/workspace/sample.devirt.luau', '/workspace/sample.deobf.luau']:
         print('MISSING', p)
 `;
     pyodide.globals.set('__src', srcText);
+    await pyodide.runPythonAsync('__src = __src.encode("utf-8").decode("latin-1")');
     await pyodide.runPythonAsync(`
 import io, sys as _sys
 class Tee:
