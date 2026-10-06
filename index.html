@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lua 混淆器 v9 · 纯离线版</title>
+<title>Lua 混淆器 v10.1 · 纯离线版</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f1117; color: #e6e6e6; min-height: 100vh; }
@@ -41,7 +41,7 @@ a { color: #4f7cff; }
 <body>
 <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><div class="loader-text" id="loaderText">混淆中，请稍候…</div></div>
 <div class="wrap">
-<h1>Lua 混淆器 v9</h1>
+<h1>Lua 混淆器 v10.1</h1>
 <div class="sub">纯离线单文件版 · Prometheus 引擎 · 支持 3 档 · 全部在本地浏览器运行，脚本不会上传</div>
 
 <div class="card">
@@ -4003,7 +4003,9 @@ return function(Compiler)
 
     function Compiler:jmp(scope, to)
         scope:addReferenceToHigherScope(self.containerFuncScope, self.posVar);
-        return Ast.AssignmentStatement({Ast.AssignmentVariable(self.containerFuncScope, self.posVar)},{to});
+        -- v10: 跳转目标恒等表达式包装（静态噪音）：(to + k) - k，运行值不变
+        local k = math.random(1, 2^16);
+        return Ast.AssignmentStatement({Ast.AssignmentVariable(self.containerFuncScope, self.posVar)},{Ast.SubExpression(Ast.AddExpression(to, Ast.NumberExpression(k)), Ast.NumberExpression(k))});
     end
 
     function Compiler:setPos(scope, val)
@@ -4015,7 +4017,9 @@ return function(Compiler)
             return Ast.AssignmentStatement({Ast.AssignmentVariable(self.containerFuncScope, self.posVar)}, {v});
         end
         scope:addReferenceToHigherScope(self.containerFuncScope, self.posVar);
-        return Ast.AssignmentStatement({Ast.AssignmentVariable(self.containerFuncScope, self.posVar)}, {Ast.NumberExpression(val) or Ast.NilExpression()});
+        -- v10: 跳转目标恒等表达式包装（静态噪音）：(val + k) - k，运行值不变
+        local k2 = math.random(1, 2^16);
+        return Ast.AssignmentStatement({Ast.AssignmentVariable(self.containerFuncScope, self.posVar)}, {Ast.SubExpression(Ast.AddExpression(Ast.NumberExpression(val), Ast.NumberExpression(k2)), Ast.NumberExpression(k2))});
     end
 
     function Compiler:setReturn(scope, val)
@@ -5579,6 +5583,59 @@ return {
 	prepare = prepare
 };
 end
+__MODS["prometheus.namegenerators.shortrand"] = function()
+-- v10: Luraph 风格短名随机生成器。首字符大写 + 后续小写/数字（Q/wb/eb 风格），
+-- 字符集每次 prepare 随机 shuffle，offset 随机落在 1-2 字符区间，短名但不可推（防名称指纹）。
+
+local util = __REQ("prometheus.util");
+local chararray = util.chararray;
+
+local VarDigits = chararray("abcdefghijklmnopqrstuvwxyz0123456789");
+local VarStartDigits = chararray("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+local RESERVED = {
+	["and"]=true, ["break"]=true, ["do"]=true, ["else"]=true, ["elseif"]=true,
+	["end"]=true, ["false"]=true, ["for"]=true, ["function"]=true, ["goto"]=true,
+	["if"]=true, ["in"]=true, ["local"]=true, ["nil"]=true, ["not"]=true,
+	["or"]=true, ["repeat"]=true, ["return"]=true, ["then"]=true, ["true"]=true,
+	["until"]=true, ["while"]=true,
+};
+local offset = 0;
+
+local function encode(n)
+	local name = ''
+	local d = n % #VarStartDigits
+	n = (n - d) / #VarStartDigits
+	name = name..VarStartDigits[d+1]
+	while n > 0 do
+		local e = n % #VarDigits
+		n = (n - e) / #VarDigits
+		name = name..VarDigits[e+1]
+	end
+	return name
+end
+
+local function generateName(id, _)
+	local n = id + offset
+	local name = encode(n)
+	while RESERVED[name] do
+		n = n + 1
+		name = encode(n)
+	end
+	return name
+end
+
+local function prepare(_)
+	util.shuffle(VarDigits);
+	util.shuffle(VarStartDigits);
+	-- 让名字落在 1-2 字符区间（26 进制的 26^1 ~ 26^2 之间），保持 Luraph 短名风格
+	offset = math.random(26 + 7, 26 + 26 * 26);
+end
+
+return {
+	generateName = generateName,
+	prepare = prepare
+};
+end
 __MODS["prometheus.namegenerators.number"] = function()
 -- This Script is Part of the Prometheus Obfuscator by levno-710
 --
@@ -5603,6 +5660,7 @@ __MODS["prometheus.namegenerators"] = function()
 return {
 	Mangled = __REQ("prometheus.namegenerators.mangled");
 	MangledShuffled = __REQ("prometheus.namegenerators.mangled_shuffled");
+	ShortRand = __REQ("prometheus.namegenerators.shortrand");
 	Il = __REQ("prometheus.namegenerators.Il");
 	Number = __REQ("prometheus.namegenerators.number");
 	Confuse = __REQ("prometheus.namegenerators.confuse");
@@ -11570,8 +11628,8 @@ PRESETS["minify"] = { desc = "Minify 压缩档（仅压缩体积）", config = {
   ["PrettyPrint"] = false, ["Seed"] = 0,
   ["Steps"] = {},
 } }
-PRESETS["goofy_lite"] = { desc = "Goofy Lite 均衡加强版（反篡改 + 单 VM + 拆串 + 惰性字符串加密 + 局部代理 + 常量数组 + 数字变异 + 环境伪装软探测）", config = {
-  ["LuaVersion"] = "LuaU", ["VarNamePrefix"] = "", ["NameGenerator"] = "MangledShuffled",
+PRESETS["goofy_lite"] = { desc = "Goofy Lite 均衡加强版（反篡改 + 单 VM + 拆串 + 惰性字符串加密 + 局部代理 + 常量数组 + 数字变异 + 短名随机 + 环境伪装软探测）", config = {
+  ["LuaVersion"] = "LuaU", ["VarNamePrefix"] = "", ["NameGenerator"] = "ShortRand",
   ["PrettyPrint"] = false, ["Seed"] = 0,
   ["Steps"] = {
     { ["Name"] = "AntiTamper", ["Settings"] = { ["UseDebug"] = false } },
@@ -11752,8 +11810,9 @@ function applyCompatLayer(out, presetName) {
   // 仿 AI 修复版 XJW加载器.lua 的手法：注入 _EP_ 代理环境兼容层
   // 仅对含 VM 参数引用的档位处理
   if (presetName === 'minify') return out;
-  // 产物头部第一串：英文水印（文件由混淆保护）
-  const WATERMARK = `-- This file is protected by obfuscation
+  // 产物头部第一串：英文水印（文件由混淆保护），版本号与页面版本同步递增
+  const OBF_VERSION = "10.1";
+  const WATERMARK = `-- This file is protected by <https://jiuyijiuyijiuyi91.github.io/vlp.githun.io/> v${OBF_VERSION}
 `;
   const PREFIX = `local _a=getfenv and getfenv() or _ENV or _G;local _EP_=setmetatable({}, {__index=_a});_EP_.getfenv=function() return _EP_ end;if _EP_.newproxy==nil then _EP_.newproxy=function(_e) if _e then return setmetatable({}, {}) end return {} end end;local _b=_a.string;if _b then local _c=(_a.table and _a.table.unpack) or _a.unpack;if _c then _EP_.string=setmetatable({}, {__index=function(_d,_f) if _f=='\\x63\\x68\\x61\\x72' then return function(...) local _h={...} local _g=select('#',...) for _i=1,_g do local _j=_h[_i] if type(_j)=='\\x6e\\x75\\x6d\\x62\\x65\\x72' then _j=_j%256 _h[_i]=_j-_j%1 end end return _b.char(_c(_h,1,_g)) end end return _b[_f] end}) end end;
 `;
@@ -11767,6 +11826,9 @@ if debug and debug.getinfo then local _ok,_i=pcall(debug.getinfo,debug.getinfo) 
 local _cc=checkcaller
 if _cc then local _ok,_r2=pcall(_cc) if _ok and _r2 then _prb=_prb+1 end end
 if (os and os.execute) or (io and io.open) then _prb=_prb+1 end
+-- v10: 关键全局函数行为软校验（只累加计数，绝不自杀；若 string.byte 被包装/篡改则计入慢路径）
+if string and string.byte then local _ok,_v=pcall(string.byte,"A") if _ok and _v~=65 then _prb=_prb+1 end end
+if table and table.concat then local _ok2,_s=pcall(table.concat,{"A","B"}) if _ok2 and _s~="AB" then _prb=_prb+1 end end
 for _i=1,(50+_prb*300) do local _x=(_i*2654435761)%4294967296 _x=(_x+_prb)%97 end
 end
 `;
@@ -11923,8 +11985,9 @@ initEngineLazy();
 </script>
 <script type="text/plain" id="worker-src">function applyCompatLayer(out, presetName) {
   if (presetName === 'minify') return out;
-  // 产物头部第一串：英文水印（文件由混淆保护）
-  const WATERMARK = `-- This file is protected by obfuscation
+  // 产物头部第一串：英文水印（文件由混淆保护），版本号与页面版本同步递增
+  const OBF_VERSION = "10.1";
+  const WATERMARK = `-- This file is protected by <https://jiuyijiuyijiuyi91.github.io/vlp.githun.io/> v${OBF_VERSION}
 `;
   const PREFIX = `local _a=getfenv and getfenv() or _ENV or _G;local _EP_=setmetatable({}, {__index=_a});_EP_.getfenv=function() return _EP_ end;if _EP_.newproxy==nil then _EP_.newproxy=function(_e) if _e then return setmetatable({}, {}) end return {} end end;local _b=_a.string;if _b then local _c=(_a.table and _a.table.unpack) or _a.unpack;if _c then _EP_.string=setmetatable({}, {__index=function(_d,_f) if _f=='\\x63\\x68\\x61\\x72' then return function(...) local _h={...} local _g=select('#',...) for _i=1,_g do local _j=_h[_i] if type(_j)=='\\x6e\\x75\\x6d\\x62\\x65\\x72' then _j=_j%256 _h[_i]=_j-_j%1 end end return _b.char(_c(_h,1,_g)) end end return _b[_f] end}) end end;
 `;
@@ -11938,6 +12001,9 @@ if debug and debug.getinfo then local _ok,_i=pcall(debug.getinfo,debug.getinfo) 
 local _cc=checkcaller
 if _cc then local _ok,_r2=pcall(_cc) if _ok and _r2 then _prb=_prb+1 end end
 if (os and os.execute) or (io and io.open) then _prb=_prb+1 end
+-- v10: 关键全局函数行为软校验（只累加计数，绝不自杀；若 string.byte 被包装/篡改则计入慢路径）
+if string and string.byte then local _ok,_v=pcall(string.byte,"A") if _ok and _v~=65 then _prb=_prb+1 end end
+if table and table.concat then local _ok2,_s=pcall(table.concat,{"A","B"}) if _ok2 and _s~="AB" then _prb=_prb+1 end end
 for _i=1,(50+_prb*300) do local _x=(_i*2654435761)%4294967296 _x=(_x+_prb)%97 end
 end
 `;
