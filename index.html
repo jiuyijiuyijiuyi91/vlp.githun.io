@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lua 混淆器 v10.1 · 纯离线版</title>
+<title>Lua 混淆器 v10.2 · 纯离线版</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f1117; color: #e6e6e6; min-height: 100vh; }
@@ -41,7 +41,7 @@ a { color: #4f7cff; }
 <body>
 <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><div class="loader-text" id="loaderText">混淆中，请稍候…</div></div>
 <div class="wrap">
-<h1>Lua 混淆器 v10.1</h1>
+<h1>Lua 混淆器 v10.2</h1>
 <div class="sub">纯离线单文件版 · Prometheus 引擎 · 支持 3 档 · 全部在本地浏览器运行，脚本不会上传</div>
 
 <div class="card">
@@ -11811,11 +11811,10 @@ function applyCompatLayer(out, presetName) {
   // 仅对含 VM 参数引用的档位处理
   if (presetName === 'minify') return out;
   // 产物头部第一串：英文水印（文件由混淆保护），版本号与页面版本同步递增
-  const OBF_VERSION = "10.1";
+  const OBF_VERSION = "10.2";
   const WATERMARK = `-- This file is protected by <https://jiuyijiuyijiuyi91.github.io/vlp.githun.io/> v${OBF_VERSION}
 `;
-  const PREFIX = `local _a=getfenv and getfenv() or _ENV or _G;local _EP_=setmetatable({}, {__index=_a});_EP_.getfenv=function() return _EP_ end;if _EP_.newproxy==nil then _EP_.newproxy=function(_e) if _e then return setmetatable({}, {}) end return {} end end;local _b=_a.string;if _b then local _c=(_a.table and _a.table.unpack) or _a.unpack;if _c then _EP_.string=setmetatable({}, {__index=function(_d,_f) if _f=='\\x63\\x68\\x61\\x72' then return function(...) local _h={...} local _g=select('#',...) for _i=1,_g do local _j=_h[_i] if type(_j)=='\\x6e\\x75\\x6d\\x62\\x65\\x72' then _j=_j%256 _h[_i]=_j-_j%1 end end return _b.char(_c(_h,1,_g)) end end return _b[_f] end}) end end;
-`;
+  const PREFIX = `local _A=_ENV or _G;local _B="\\103\\101\\116\\102\\101\\110\\118";local _C="\\110\\101\\119\\112\\114\\111\\120\\121";local _D="\\115\\116\\114\\105\\110\\103";local _E="\\116\\097\\098\\108\\101";local _F="\\117\\110\\112\\097\\099\\107";local _EP_=setmetatable({}, {__index=_A});if _A[_B] then _A=_A[_B]() or _A end;_EP_[_B]=function() return _EP_ end;if _EP_[_C]==nil then _EP_[_C]=function(_R) if _R then return setmetatable({}, {}) end return {} end end;local _H=_A[_D];if _H then local _K=(_A[_E] and _A[_E][_F]) or _A[_F];if _K then _EP_[_D]=setmetatable({}, {__index=function(_M,_X)if _X=="\\099\\104\\097\\114" then return function(...) local _Y={...} local _Z=select("#",...) for _W=1,_Z do local _V=_Y[_W] if type(_V)=="\\110\\117\\109\\098\\101\\114" then _V=_V%256 _Y[_W]=_V-_V%1 end end return _H[_X](_K(_Y,1,_Z)) end end return _H[_X] end}) end end;`;
   // v8: 环境伪装软探测块。全部探测只累加 _prb 计数，异常时仅增加有界慢路径（毫秒级），绝不自杀/死循环，保证任何环境可加载。
   const ENV_PROBE = `do
 local _prb=0
@@ -11826,7 +11825,6 @@ if debug and debug.getinfo then local _ok,_i=pcall(debug.getinfo,debug.getinfo) 
 local _cc=checkcaller
 if _cc then local _ok,_r2=pcall(_cc) if _ok and _r2 then _prb=_prb+1 end end
 if (os and os.execute) or (io and io.open) then _prb=_prb+1 end
--- v10: 关键全局函数行为软校验（只累加计数，绝不自杀；若 string.byte 被包装/篡改则计入慢路径）
 if string and string.byte then local _ok,_v=pcall(string.byte,"A") if _ok and _v~=65 then _prb=_prb+1 end end
 if table and table.concat then local _ok2,_s=pcall(table.concat,{"A","B"}) if _ok2 and _s~="AB" then _prb=_prb+1 end end
 for _i=1,(50+_prb*300) do local _x=(_i*2654435761)%4294967296 _x=(_x+_prb)%97 end
@@ -11986,11 +11984,10 @@ initEngineLazy();
 <script type="text/plain" id="worker-src">function applyCompatLayer(out, presetName) {
   if (presetName === 'minify') return out;
   // 产物头部第一串：英文水印（文件由混淆保护），版本号与页面版本同步递增
-  const OBF_VERSION = "10.1";
+  const OBF_VERSION = "10.2";
   const WATERMARK = `-- This file is protected by <https://jiuyijiuyijiuyi91.github.io/vlp.githun.io/> v${OBF_VERSION}
 `;
-  const PREFIX = `local _a=getfenv and getfenv() or _ENV or _G;local _EP_=setmetatable({}, {__index=_a});_EP_.getfenv=function() return _EP_ end;if _EP_.newproxy==nil then _EP_.newproxy=function(_e) if _e then return setmetatable({}, {}) end return {} end end;local _b=_a.string;if _b then local _c=(_a.table and _a.table.unpack) or _a.unpack;if _c then _EP_.string=setmetatable({}, {__index=function(_d,_f) if _f=='\\x63\\x68\\x61\\x72' then return function(...) local _h={...} local _g=select('#',...) for _i=1,_g do local _j=_h[_i] if type(_j)=='\\x6e\\x75\\x6d\\x62\\x65\\x72' then _j=_j%256 _h[_i]=_j-_j%1 end end return _b.char(_c(_h,1,_g)) end end return _b[_f] end}) end end;
-`;
+  const PREFIX = `local _A=_ENV or _G;local _B="\\103\\101\\116\\102\\101\\110\\118";local _C="\\110\\101\\119\\112\\114\\111\\120\\121";local _D="\\115\\116\\114\\105\\110\\103";local _E="\\116\\097\\098\\108\\101";local _F="\\117\\110\\112\\097\\099\\107";local _EP_=setmetatable({}, {__index=_A});if _A[_B] then _A=_A[_B]() or _A end;_EP_[_B]=function() return _EP_ end;if _EP_[_C]==nil then _EP_[_C]=function(_R) if _R then return setmetatable({}, {}) end return {} end end;local _H=_A[_D];if _H then local _K=(_A[_E] and _A[_E][_F]) or _A[_F];if _K then _EP_[_D]=setmetatable({}, {__index=function(_M,_X)if _X=="\\099\\104\\097\\114" then return function(...) local _Y={...} local _Z=select("#",...) for _W=1,_Z do local _V=_Y[_W] if type(_V)=="\\110\\117\\109\\098\\101\\114" then _V=_V%256 _Y[_W]=_V-_V%1 end end return _H[_X](_K(_Y,1,_Z)) end end return _H[_X] end}) end end;`;
   // v8: 环境伪装软探测块。全部探测只累加 _prb 计数，异常时仅增加有界慢路径（毫秒级），绝不自杀/死循环，保证任何环境可加载。
   const ENV_PROBE = `do
 local _prb=0
@@ -12001,7 +11998,6 @@ if debug and debug.getinfo then local _ok,_i=pcall(debug.getinfo,debug.getinfo) 
 local _cc=checkcaller
 if _cc then local _ok,_r2=pcall(_cc) if _ok and _r2 then _prb=_prb+1 end end
 if (os and os.execute) or (io and io.open) then _prb=_prb+1 end
--- v10: 关键全局函数行为软校验（只累加计数，绝不自杀；若 string.byte 被包装/篡改则计入慢路径）
 if string and string.byte then local _ok,_v=pcall(string.byte,"A") if _ok and _v~=65 then _prb=_prb+1 end end
 if table and table.concat then local _ok2,_s=pcall(table.concat,{"A","B"}) if _ok2 and _s~="AB" then _prb=_prb+1 end end
 for _i=1,(50+_prb*300) do local _x=(_i*2654435761)%4294967296 _x=(_x+_prb)%97 end
