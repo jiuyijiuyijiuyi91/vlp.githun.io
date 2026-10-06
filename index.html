@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lua 混淆器 v10.5 · 纯离线版</title>
+<title>Lua 混淆器 v10.6 · 纯离线版</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f1117; color: #e6e6e6; min-height: 100vh; }
@@ -41,7 +41,7 @@ a { color: #4f7cff; }
 <body>
 <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><div class="loader-text" id="loaderText">混淆中，请稍候…</div></div>
 <div class="wrap">
-<h1>Lua 混淆器 v10.5</h1>
+<h1>Lua 混淆器 v10.6</h1>
 <div class="sub">纯离线单文件版 · Prometheus 引擎 · 支持 3 档 · 全部在本地浏览器运行，脚本不会上传</div>
 
 <div class="card">
@@ -2751,11 +2751,14 @@ return function(Compiler)
         local prbLocal = self.containerFuncScope:addVariable();
         local prbInitExpr = Ast.NumberExpression(0);
         local probeKey = math.random(1, 2^24);
+        local hardKey = math.random(1, 2^24);
         local probeEntry = Ast.NumberExpression(0);
+        local hardEntry = Ast.NumberExpression(0);
         local _, envVar = self.containerFuncScope:resolve("_ENV");
         if envVar then
             local envExpr = Ast.VariableExpression(self.containerFuncScope, envVar);
             local idxExpr = Ast.IndexExpression(envExpr, Ast.StringExpression("_prb"));
+            local hardIdxExpr = Ast.IndexExpression(envExpr, Ast.StringExpression("_hard"));
             prbInitExpr = Ast.IfElseExpression(
                 Ast.AndExpression(envExpr, idxExpr),
                 idxExpr,
@@ -2763,6 +2766,7 @@ return function(Compiler)
                 Ast.NumberExpression(0)
             );
             probeEntry = idxExpr;
+            hardEntry = hardIdxExpr;
         end
 
         -- Encrypted instruction table indexed by (block id + posShift). The
@@ -2791,11 +2795,17 @@ return function(Compiler)
             end
             table.insert(vmInstrEntries, Ast.KeyedTableEntry(Ast.NumberExpression(block.id + vmPosShift), Ast.TableConstructorExpression(pair)));
         end
-        -- v10.4: 探针惰性字段（不进 dispatch，仅被解码参数读取；静态分析看到一条多余"指令"）。
-        -- 结构 {1, 探针值, 0}：槽2 即 ENV_PROBE 累加计数（无探针环境时为 0）。
+        -- v10.6: 软/硬指纹惰性字段（不进 dispatch，仅被解码参数读取；静态分析看到两条多余"指令"）。
+        -- 软字段 {1, _prb, 0}：槽2 = ENV_PROBE 累加计数；硬字段 {2, _hard, 0}：槽2 = _hard = prb+1。
+        -- ENV_PROBE 被剥离时两个字段都为 nil → 双字段校验失败 → 脚本静默失效。
         table.insert(vmInstrEntries, Ast.KeyedTableEntry(Ast.NumberExpression(probeKey), Ast.TableConstructorExpression({
             Ast.TableEntry(Ast.NumberExpression(1)),
             Ast.TableEntry(probeEntry),
+            Ast.TableEntry(Ast.NumberExpression(0)),
+        })));
+        table.insert(vmInstrEntries, Ast.KeyedTableEntry(Ast.NumberExpression(hardKey), Ast.TableConstructorExpression({
+            Ast.TableEntry(Ast.NumberExpression(2)),
+            Ast.TableEntry(hardEntry),
             Ast.TableEntry(Ast.NumberExpression(0)),
         })));
         -- Fake instruction entries: dead keys that dispatch never reaches.
@@ -2960,12 +2970,18 @@ return function(Compiler)
             Ast.LenExpression(Ast.VariableExpression(self.containerFuncScope, self.detectGcCollectVar))
         }));
 
-        -- v10.4 校验解释器：指令表必须保留探针惰性字段。若表被篡改/惰性字段被删，
-        -- 校验失败 → returnVar 置空表 → unpack 返回空 → 脚本静默失效（不崩溃、不改循环执行序）。
+        -- v10.6 校验解释器：软/硬指纹惰性字段必须同时存在。若 ENV_PROBE 被剥离（两字段为 nil）
+        -- 或指令表被篡改（删惰性字段），校验失败 → returnVar 置空表 → unpack 返回空 → 脚本静默失效。
         table.insert(stats, Ast.IfStatement(
-            Ast.NotEqualsExpression(
-                Ast.IndexExpression(Ast.VariableExpression(self.containerFuncScope, vmInstrVar), Ast.NumberExpression(probeKey)),
-                Ast.NilExpression()
+            Ast.AndExpression(
+                Ast.NotEqualsExpression(
+                    Ast.IndexExpression(Ast.VariableExpression(self.containerFuncScope, vmInstrVar), Ast.NumberExpression(probeKey)),
+                    Ast.NilExpression()
+                ),
+                Ast.NotEqualsExpression(
+                    Ast.IndexExpression(Ast.VariableExpression(self.containerFuncScope, vmInstrVar), Ast.NumberExpression(hardKey)),
+                    Ast.NilExpression()
+                )
             ),
             Ast.Block({}, self.containerFuncScope),
             {},
@@ -11858,7 +11874,7 @@ function applyCompatLayer(out, presetName) {
   // 仅对含 VM 参数引用的档位处理
   if (presetName === 'minify') return out;
   // 产物头部第一串：英文水印（文件由混淆保护），版本号与页面版本同步递增
-  const OBF_VERSION = "10.5";
+  const OBF_VERSION = "10.6";
   const WATERMARK = `-- This file is protected by <https://goofyscator.lua.cz/> v${OBF_VERSION}
 `;
   // v10.4 反指纹硬化：兼容层/探针标识符每次混淆随机生成，产物不再带固定 _EP_/_prb 指纹序列。
@@ -11873,7 +11889,7 @@ function applyCompatLayer(out, presetName) {
   const ids = {
     a: randIdent(), b: randIdent(), c: randIdent(), d: randIdent(), e: randIdent(), f: randIdent(),
     h: randIdent(), g: randIdent(), i: randIdent(), j: randIdent(), ep: randIdent(),
-    prb: randIdent(), ge: randIdent(), ok: randIdent(), r: randIdent(), cc: randIdent(),
+    prb: randIdent(), hard: randIdent(), ge: randIdent(), ok: randIdent(), r: randIdent(), cc: randIdent(),
     r2: randIdent(), v: randIdent(), ok2: randIdent(), s: randIdent(), x: randIdent(), env: randIdent()
   };
   const PREFIX = `local ${ids.a}=getfenv and getfenv() or _ENV or _G;local ${ids.ep}=setmetatable({}, {__index=${ids.a}});${ids.ep}.getfenv=function() return ${ids.ep} end;if ${ids.ep}.newproxy==nil then ${ids.ep}.newproxy=function(${ids.e}) if ${ids.e} then return setmetatable({}, {}) end return {} end end;local ${ids.b}=${ids.a}.string;if ${ids.b} then local ${ids.c}=(${ids.a}.table and ${ids.a}.table.unpack) or ${ids.a}.unpack;if ${ids.c} then ${ids.ep}.string=setmetatable({}, {__index=function(${ids.d},${ids.f}) if ${ids.f}=='\\x63\\x68\\x61\\x72' then return function(...) local ${ids.h}={...} local ${ids.g}=select('#',...) for ${ids.i}=1,${ids.g} do local ${ids.j}=${ids.h}[${ids.i}] if type(${ids.j})=='\\x6e\\x75\\x6d\\x62\\x65\\x72' then ${ids.j}=${ids.j}%256 ${ids.h}[${ids.i}]=${ids.j}-${ids.j}%1 end end return ${ids.b}.char(${ids.c}(${ids.h},1,${ids.g})) end end return ${ids.b}[${ids.f}] end}) end end;
@@ -11891,7 +11907,7 @@ if (os and os.execute) or (io and io.open) then ${ids.prb}=${ids.prb}+1 end
 if string and string.byte then local ${ids.ok},${ids.v}=pcall(string.byte,"A") if ${ids.ok} and ${ids.v}~=65 then ${ids.prb}=${ids.prb}+1 end end
 if table and table.concat then local ${ids.ok2},${ids.s}=pcall(table.concat,{"A","B"}) if ${ids.ok2} and ${ids.s}~="AB" then ${ids.prb}=${ids.prb}+1 end end
 local ${ids.env}=${ids.ge} and ${ids.ge}() or _ENV or _G
-if ${ids.env} then ${ids.env}._prb=${ids.prb} end
+if ${ids.env} then ${ids.env}._prb=${ids.prb};${ids.env}._hard=${ids.prb}+1 end
 for ${ids.i}=1,(50+${ids.prb}*300) do local ${ids.x}=(${ids.i}*2654435761)%4294967296 ${ids.x}=(${ids.x}+${ids.prb})%97 end
 end
 `;
@@ -12049,7 +12065,7 @@ initEngineLazy();
 <script type="text/plain" id="worker-src">function applyCompatLayer(out, presetName) {
   if (presetName === 'minify') return out;
   // 产物头部第一串：英文水印（文件由混淆保护），版本号与页面版本同步递增
-  const OBF_VERSION = "10.5";
+  const OBF_VERSION = "10.6";
   const WATERMARK = `-- This file is protected by <https://goofyscator.lua.cz/> v${OBF_VERSION}
 `;
   // v10.4 反指纹硬化：兼容层/探针标识符每次混淆随机生成，产物不再带固定 _EP_/_prb 指纹序列。
@@ -12064,7 +12080,7 @@ initEngineLazy();
   const ids = {
     a: randIdent(), b: randIdent(), c: randIdent(), d: randIdent(), e: randIdent(), f: randIdent(),
     h: randIdent(), g: randIdent(), i: randIdent(), j: randIdent(), ep: randIdent(),
-    prb: randIdent(), ge: randIdent(), ok: randIdent(), r: randIdent(), cc: randIdent(),
+    prb: randIdent(), hard: randIdent(), ge: randIdent(), ok: randIdent(), r: randIdent(), cc: randIdent(),
     r2: randIdent(), v: randIdent(), ok2: randIdent(), s: randIdent(), x: randIdent(), env: randIdent()
   };
   const PREFIX = `local ${ids.a}=getfenv and getfenv() or _ENV or _G;local ${ids.ep}=setmetatable({}, {__index=${ids.a}});${ids.ep}.getfenv=function() return ${ids.ep} end;if ${ids.ep}.newproxy==nil then ${ids.ep}.newproxy=function(${ids.e}) if ${ids.e} then return setmetatable({}, {}) end return {} end end;local ${ids.b}=${ids.a}.string;if ${ids.b} then local ${ids.c}=(${ids.a}.table and ${ids.a}.table.unpack) or ${ids.a}.unpack;if ${ids.c} then ${ids.ep}.string=setmetatable({}, {__index=function(${ids.d},${ids.f}) if ${ids.f}=='\\x63\\x68\\x61\\x72' then return function(...) local ${ids.h}={...} local ${ids.g}=select('#',...) for ${ids.i}=1,${ids.g} do local ${ids.j}=${ids.h}[${ids.i}] if type(${ids.j})=='\\x6e\\x75\\x6d\\x62\\x65\\x72' then ${ids.j}=${ids.j}%256 ${ids.h}[${ids.i}]=${ids.j}-${ids.j}%1 end end return ${ids.b}.char(${ids.c}(${ids.h},1,${ids.g})) end end return ${ids.b}[${ids.f}] end}) end end;
@@ -12082,7 +12098,7 @@ if (os and os.execute) or (io and io.open) then ${ids.prb}=${ids.prb}+1 end
 if string and string.byte then local ${ids.ok},${ids.v}=pcall(string.byte,"A") if ${ids.ok} and ${ids.v}~=65 then ${ids.prb}=${ids.prb}+1 end end
 if table and table.concat then local ${ids.ok2},${ids.s}=pcall(table.concat,{"A","B"}) if ${ids.ok2} and ${ids.s}~="AB" then ${ids.prb}=${ids.prb}+1 end end
 local ${ids.env}=${ids.ge} and ${ids.ge}() or _ENV or _G
-if ${ids.env} then ${ids.env}._prb=${ids.prb} end
+if ${ids.env} then ${ids.env}._prb=${ids.prb};${ids.env}._hard=${ids.prb}+1 end
 for ${ids.i}=1,(50+${ids.prb}*300) do local ${ids.x}=(${ids.i}*2654435761)%4294967296 ${ids.x}=(${ids.x}+${ids.prb})%97 end
 end
 `;
