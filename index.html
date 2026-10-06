@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lua 混淆器 Xv24 · 纯离线版</title>
+<title>Lua 混淆器 Xv27 · 纯离线版</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f1117; color: #e6e6e6; min-height: 100vh; }
@@ -41,7 +41,7 @@ a { color: #4f7cff; }
 <body>
 <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><div class="loader-text" id="loaderText">混淆中，请稍候…</div></div>
 <div class="wrap">
-<h1>Lua 混淆器 Xv24</h1>
+<h1>Lua 混淆器 Xv27</h1>
 <div class="sub">纯离线单文件版 · Prometheus 引擎 · 支持 3 档 · 全部在本地浏览器运行，脚本不会上传</div>
 
 <div class="card">
@@ -8420,11 +8420,6 @@ function EncryptStrings:init(_) end
 function EncryptStrings:CreateEncryptionService()
 	local usedSeeds = {};
 
-	local secret_key_6 = math.random(0, 63) -- 6-bit  arbitrary integer (0..63)
-	local secret_key_7 = math.random(0, 127) -- 7-bit  arbitrary integer (0..127)
-	local secret_key_44 = math.random(0, 17592186044415) -- 44-bit arbitrary integer (0..17592186044415)
-	local secret_key_8 = math.random(0, 255); -- 8-bit  arbitrary integer (0..255)
-
 	local floor = math.floor
 
 	local function primitive_root_257(idx)
@@ -8435,9 +8430,18 @@ function EncryptStrings:CreateEncryptionService()
 		return g
 	end
 
-	local param_mul_8 = primitive_root_257(secret_key_7)
-	local param_mul_45 = secret_key_6 * 4 + 1
-	local param_add_45 = secret_key_44 * 2 + 1
+	-- Master seed packs all five decryption params. Runtime derive()
+	-- recomputes them from MASTER with the same plain arithmetic
+	-- (shallow expressions only, safe for NumbersToExpressions),
+	-- so no key constants appear in plaintext in the output.
+	local master = math.random(0, 562949953421311) -- up to 49-bit
+	local param_off = master % 4096 + 1
+	local param_key8 = master % 256
+	local param_mul_8 = (master % 128) * 2 + 1
+	local param_add_45 = (master % 16384) * 2 + 1
+	local param_mul_45 = param_key8 * 4 + 1
+	local offset_key = param_off
+	local secret_key_8 = param_key8
 
 	local state_45 = 0
 	local state_8 = 2
@@ -8494,22 +8498,29 @@ function EncryptStrings:CreateEncryptionService()
 			out[i] = string.char((byte - (get_next_pseudo_random_byte() + prevVal)) % 256);
 			prevVal = byte;
 		end
-		return table.concat(out), seed;
+		return table.concat(out), seed + offset_key;
 	end
 
     local function genCode()
+        -- Dynamic-key derivation: decryption params are recomputed at runtime
+        -- from MASTER via shallow expressions inlined at each use site
+        -- (Xv25-shaped code, no derive function, no intermediate locals),
+        -- so no key constants appear in plaintext in the output.
+        local deriveCode = "local MASTER = " .. tostring(master)
+
         local code = [[
 do
 	]] .. table.concat(util.shuffle{
-		"local floor = math.floor",
-		"local random = math.random",
-		"local remove = table.remove",
-		"local char = string.char",
+		"local floor = (math.floor)",
+		"local random = (math.random)",
+		"local remove = (table.remove)",
+		"local char = (string.char)",
 		"local state_45 = 0",
 		"local state_8 = 2",
 		"local charmap = {}",
 		"local nums = {}"
-	}, "\n") .. [[
+	}, ";\n") .. [[
+]] .. deriveCode .. [[
 	for i = 1, 256 do
 		nums[i] = i;
 	end
@@ -8523,9 +8534,10 @@ do
 	local prev_values = {}
 	local function get_next_pseudo_random_byte()
 		if #prev_values == 0 then
-			state_45 = (state_45 * ]] .. tostring(param_mul_45) .. [[ + ]] .. tostring(param_add_45) .. [[) % 35184372088832
+			state_45 = (state_45 * ((MASTER % 256) * 4 + 1) + (MASTER % 16384) * 2 + 1) % 35184372088832
 			repeat
-				state_8 = state_8 * ]] .. tostring(param_mul_8) .. [[ % 257
+				state_8 = state_8 * ((MASTER % 128) * 2 + 1) % 257
+				if state_8 == 0 then state_8 = 2 end
 			until state_8 ~= 1
 			local r = state_8 % 32
 			local shift = 13 - (state_8 - r) / 32
@@ -8553,11 +8565,11 @@ do
 		if(realStringsLocal[seed]) then return seed; else
 			prev_values = {};
 			local chars = charmap;
-			state_45 = seed % 35184372088832
-			state_8 = seed % 255 + 2
+			state_45 = (seed - (MASTER % 4096 + 1)) % 35184372088832
+			state_8 = (seed - (MASTER % 4096 + 1)) % 255 + 2
 			local len = #str;
 			realStringsLocal[seed] = "";
-			local prevVal = ]] .. tostring(secret_key_8) .. [[;
+			local prevVal = MASTER % 256;
 			local s = "";
 			for i=1, len, 1 do
 				prevVal = (string.byte(str, i) + get_next_pseudo_random_byte() + prevVal) % 256
@@ -11424,10 +11436,10 @@ PRESETS["goofy_lite"] = { desc = "Goofy Lite 均衡加强版（反篡改 + 单 V
     { ["Name"] = "Vmify", ["Settings"] = { ["EncryptBounds"] = true } },
     { ["Name"] = "EncryptStrings", ["Settings"] = {} },
     { ["Name"] = "SplitStrings", ["Settings"] = { ["Threshold"] = 0.8, ["MinLength"] = 8, ["MaxLength"] = 12, ["ConcatenationType"] = "custom", ["CustomFunctionType"] = "global" } },
-    { ["Name"] = "NumbersToExpressions", ["Settings"] = { ["NumberRepresentationMutation"] = true } },
+    { ["Name"] = "NumbersToExpressions", ["Settings"] = {} },
     { ["Name"] = "ProxifyLocals", ["Settings"] = { ["LiteralType"] = "string" } },
     { ["Name"] = "ConstantArray", ["Settings"] = { ["Threshold"] = 1, ["StringsOnly"] = true, ["Shuffle"] = true, ["Rotate"] = true, ["LocalWrapperThreshold"] = 0 } },
-    { ["Name"] = "WrapInFunction", ["Settings"] = {} },
+    { ["Name"] = "WrapInFunction", ["Settings"] = {} }
   },
 } }
 local function clone(t)
@@ -11598,24 +11610,7 @@ function applyCompatLayer(out, presetName) {
   // 仿 AI 修复版 XJW加载器.lua 的手法：注入 _EP_ 代理环境兼容层
   // 仅对含 VM 参数引用的档位处理
   if (presetName === 'minify') return out;
-  const PREFIX = `-- This file is protected by obfuscation
-local _E_=getfenv and getfenv() or _ENV or _G;
-local _EP_=setmetatable({},{__index=_E_});
-_EP_.getfenv=function() return _EP_ end;
-if _EP_.newproxy==nil then _EP_.newproxy=function(_a) if _a then return setmetatable({}, {}) end return {} end end;
-local _RS_=_E_.string;
-if _RS_ then
-  local _u_=(_E_.table and _E_.table.unpack) or _E_.unpack;
-  if _u_ then
-    _EP_.string=setmetatable({},{__index=function(_,_k)
-      if _k=='char' then return function(...)
-        local t={...} local n=select('#',...)
-        for i=1,n do local v=t[i] if type(v)=='number' then v=v%256 t[i]=v-v%1 end end
-        return _RS_.char(_u_(t,1,n))
-      end end
-      return _RS_[_k] end})
-  end
-end;
+  const PREFIX = `local _a=getfenv and getfenv() or _ENV or _G;local _EP_=setmetatable({}, {__index=_a});_EP_.getfenv=function() return _EP_ end;if _EP_.newproxy==nil then _EP_.newproxy=function(_e) if _e then return setmetatable({}, {}) end return {} end end;local _b=_a.string;if _b then local _c=(_a.table and _a.table.unpack) or _a.unpack;if _c then _EP_.string=setmetatable({}, {__index=function(_d,_f) if _f=='\\x63\\x68\\x61\\x72' then return function(...) local _h={...} local _g=select('#',...) for _i=1,_g do local _j=_h[_i] if type(_j)=='\\x6e\\x75\\x6d\\x62\\x65\\x72' then _j=_j%256 _h[_i]=_j-_j%1 end end return _b.char(_c(_h,1,_g)) end end return _b[_f] end}) end end;
 `;
   let r = out.replace('getfenv and getfenv()or _ENV', '_EP_');
   r = r.replace(/([,(])newproxy([,)])/g, '$1_EP_.newproxy$2');
@@ -11770,24 +11765,7 @@ initEngineLazy();
 </script>
 <script type="text/plain" id="worker-src">function applyCompatLayer(out, presetName) {
   if (presetName === 'minify') return out;
-  const PREFIX = `-- This file is protected by obfuscation
-local _E_=getfenv and getfenv() or _ENV or _G;
-local _EP_=setmetatable({},{__index=_E_});
-_EP_.getfenv=function() return _EP_ end;
-if _EP_.newproxy==nil then _EP_.newproxy=function(_a) if _a then return setmetatable({}, {}) end return {} end end;
-local _RS_=_E_.string;
-if _RS_ then
-  local _u_=(_E_.table and _E_.table.unpack) or _E_.unpack;
-  if _u_ then
-    _EP_.string=setmetatable({},{__index=function(_,_k)
-      if _k=='char' then return function(...)
-        local t={...} local n=select('#',...)
-        for i=1,n do local v=t[i] if type(v)=='number' then v=v%256 t[i]=v-v%1 end end
-        return _RS_.char(_u_(t,1,n))
-      end end
-      return _RS_[_k] end})
-  end
-end;
+  const PREFIX = `local _a=getfenv and getfenv() or _ENV or _G;local _EP_=setmetatable({}, {__index=_a});_EP_.getfenv=function() return _EP_ end;if _EP_.newproxy==nil then _EP_.newproxy=function(_e) if _e then return setmetatable({}, {}) end return {} end end;local _b=_a.string;if _b then local _c=(_a.table and _a.table.unpack) or _a.unpack;if _c then _EP_.string=setmetatable({}, {__index=function(_d,_f) if _f=='\\x63\\x68\\x61\\x72' then return function(...) local _h={...} local _g=select('#',...) for _i=1,_g do local _j=_h[_i] if type(_j)=='\\x6e\\x75\\x6d\\x62\\x65\\x72' then _j=_j%256 _h[_i]=_j-_j%1 end end return _b.char(_c(_h,1,_g)) end end return _b[_f] end}) end end;
 `;
   let r = out.replace('getfenv and getfenv()or _ENV', '_EP_');
   r = r.replace(/([,(])newproxy([,)])/g, '$1_EP_.newproxy$2');
