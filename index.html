@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lua 混淆器 Xv23 · 纯离线版</title>
+<title>Lua 混淆器 Xv24 · 纯离线版</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f1117; color: #e6e6e6; min-height: 100vh; }
@@ -41,7 +41,7 @@ a { color: #4f7cff; }
 <body>
 <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><div class="loader-text" id="loaderText">混淆中，请稍候…</div></div>
 <div class="wrap">
-<h1>Lua 混淆器 Xv23</h1>
+<h1>Lua 混淆器 Xv24</h1>
 <div class="sub">纯离线单文件版 · Prometheus 引擎 · 支持 3 档 · 全部在本地浏览器运行，脚本不会上传</div>
 
 <div class="card">
@@ -11575,7 +11575,6 @@ async function initEngine() {
     if (typeof fn === 'string') throw new Error('引擎编译失败: ' + fn.slice(0, 200));
     const ret = await fn();
     setStatus('引擎就绪（' + (typeof ret === 'string' ? ret : 'ok') + '）。粘贴脚本后点「开始混淆」。', 'ok');
-    $('btnObf').disabled = false;
     window.__DBG = {
       runLua: async (code) => {
         const f = await state.loadstring(code, 'dbg');
@@ -11642,6 +11641,7 @@ return res`, 'obf');
 
 let _worker = null;
 let _workerReady = null;
+let _btnEnabled = false;
 let _obfSeq = 0;
 const _pending = new Map();
 
@@ -11676,6 +11676,12 @@ async function ensureWorker() {
     _worker.postMessage({ type: 'init', lwSrc: $('lw-src').textContent, bundleSrc: $('bundle-src').textContent });
   });
   try { await _workerReady; } catch (e) { _worker = null; _workerReady = null; throw e; }
+  // Xv24：Worker 引擎就绪即启用按钮（不依赖主线程调试引擎）
+  if (!_btnEnabled) {
+    _btnEnabled = true;
+    setStatus('引擎就绪。粘贴脚本后点「开始混淆」。', 'ok');
+    $('btnObf').disabled = false;
+  }
   return _workerReady;
 }
 
@@ -11686,9 +11692,10 @@ $('btnObf').addEventListener('click', async () => {
   $('btnObf').disabled = true;
   $('btnDl').disabled = true;
   const t0 = performance.now();
-  showLoader('混淆中…（' + PRESET_INFO[presetName] + '）');
+  showLoader('正在初始化引擎（首次较慢，请勿关闭页面）…');
   try {
     await ensureWorker();
+    showLoader('正在混淆（脚本越大耗时越长，请耐心等待）…');
     const id = ++_obfSeq;
     const p = new Promise((resolve, reject) => {
       _pending.set(id, { resolve, reject });
@@ -11706,11 +11713,15 @@ $('btnObf').addEventListener('click', async () => {
     const out = await p;
     const ms = Math.round(performance.now() - t0);
     const ratio = (out.length / src.length * 100).toFixed(1);
-    $('output').value = out;
-    $('btnDl').disabled = false;
-    setStatus('完成，耗时 ' + ms + ' ms；输出 ' + out.length + ' 字符，体积为输入的 ' + ratio + '%。已自动开始下载。', 'ok');
     hideLoader();
-    downloadText('obfuscated_' + Date.now() + '.lua', out);
+    setStatus('完成，耗时 ' + ms + ' ms；输出 ' + out.length + ' 字符，体积为输入的 ' + ratio + '%。正在写入结果…', 'ok');
+    // 异步落地：大字符串写 textarea / 创建下载 Blob 延后一拍，避免卡主线程
+    setTimeout(() => {
+      $('output').value = out;
+      $('btnDl').disabled = false;
+      setStatus('完成，耗时 ' + ms + ' ms；输出 ' + out.length + ' 字符，体积为输入的 ' + ratio + '%。已自动开始下载。', 'ok');
+      downloadText('obfuscated_' + Date.now() + '.lua', out);
+    }, 30);
   } catch (e) {
     let detail = (e && e.message) || String(e);
     try { detail += '\n---\n' + JSON.stringify({ name: e && e.name, message: e && e.message, cause: e && e.cause ? (e.cause.message || String(e.cause)) : null, stack: e && e.stack ? String(e.stack).slice(0, 1200) : null }); } catch (_) {}
@@ -11741,7 +11752,21 @@ $('fileInput').addEventListener('change', (e) => {
 $('btnSample').addEventListener('click', () => { $('input').value = SAMPLE; setStatus('已填入示例脚本。', ''); });
 $('btnClear').addEventListener('click', () => { $('input').value = ''; $('output').value = ''; $('btnDl').disabled = true; setStatus('已清空。', ''); });
 
-initEngine();
+// Xv24 优化：页面加载先渲染 UI，主线程引擎延后空闲初始化；Worker 引擎后台预热
+let _prewarmed = false;
+function prewarmWorker() {
+  if (_prewarmed) return;
+  _prewarmed = true;
+  try { ensureWorker().catch(() => {}); } catch (_) {}
+}
+function initEngineLazy() {
+  const run = () => initEngine().catch(() => {});
+  if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 4000 });
+  else setTimeout(run, 600);
+}
+// 立即预热 Worker（后台编译，不阻塞主线程 UI）；主线程引擎空闲后再初始化
+prewarmWorker();
+initEngineLazy();
 </script>
 <script type="text/plain" id="worker-src">function applyCompatLayer(out, presetName) {
   if (presetName === 'minify') return out;
