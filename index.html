@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lua 混淆器 · 纯离线版</title>
+<title>Lua 混淆器 Xv23 · 纯离线版</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f1117; color: #e6e6e6; min-height: 100vh; }
@@ -41,7 +41,7 @@ a { color: #4f7cff; }
 <body>
 <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><div class="loader-text" id="loaderText">混淆中，请稍候…</div></div>
 <div class="wrap">
-<h1>Lua 混淆器</h1>
+<h1>Lua 混淆器 Xv23</h1>
 <div class="sub">纯离线单文件版 · Prometheus 引擎 · 支持 3 档 · 全部在本地浏览器运行，脚本不会上传</div>
 
 <div class="card">
@@ -11416,11 +11416,11 @@ PRESETS["minify"] = { desc = "Minify 压缩档（仅压缩体积）", config = {
   ["PrettyPrint"] = false, ["Seed"] = 0,
   ["Steps"] = {},
 } }
-PRESETS["goofy_lite"] = { desc = "Goofy Lite 均衡加强版（反篡改 + 反hook + 单 VM + 拆串 + 惰性字符串加密 + 局部代理 + 常量数组 + 数字变异）", config = {
+PRESETS["goofy_lite"] = { desc = "Goofy Lite 均衡加强版（反篡改 + 单 VM + 拆串 + 惰性字符串加密 + 局部代理 + 常量数组 + 数字变异）", config = {
   ["LuaVersion"] = "LuaU", ["VarNamePrefix"] = "", ["NameGenerator"] = "MangledShuffled",
   ["PrettyPrint"] = false, ["Seed"] = 0,
   ["Steps"] = {
-    { ["Name"] = "AntiTamper", ["Settings"] = { ["UseDebug"] = true } },
+    { ["Name"] = "AntiTamper", ["Settings"] = { ["UseDebug"] = false } },
     { ["Name"] = "Vmify", ["Settings"] = { ["EncryptBounds"] = true } },
     { ["Name"] = "EncryptStrings", ["Settings"] = {} },
     { ["Name"] = "SplitStrings", ["Settings"] = { ["Threshold"] = 0.8, ["MinLength"] = 8, ["MaxLength"] = 12, ["ConcatenationType"] = "custom", ["CustomFunctionType"] = "global" } },
@@ -11501,7 +11501,7 @@ const $ = (id) => document.getElementById(id);
 
 const PRESET_ORDER = ['goofy_lite', 'weak', 'minify'];
 const PRESET_INFO = {
-  goofy_lite: 'Goofy Lite 均衡加强版（反篡改 + 反hook + 单 VM + 拆串 + 惰性字符串加密 + 局部代理 + 常量数组 + 数字变异）',
+  goofy_lite: 'Goofy Lite 均衡加强版（反篡改 + 单 VM + 拆串 + 惰性字符串加密 + 局部代理 + 常量数组 + 数字变异）',
   weak: 'Weak 轻量档（单 VM + 基础混淆）',
   minify: 'Minify 压缩档（仅压缩体积）',
 };
